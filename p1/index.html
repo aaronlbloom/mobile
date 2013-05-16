@@ -16,7 +16,7 @@
 		I either did not understand or agree with this and changing it messed up my formatting so i left it as is.
 
 	JSLint returned issues only regarding avoiding avoid event handlers and it did not like the supports web storage routine.
-	I ignored these on purpose, I hope this is OK.
+	I ignored these on purpose, I hope this is OK. 	
 
 -->
 <!DOCTYPE html>
@@ -220,7 +220,7 @@
                     zipcode = jQuery.trim(document.getElementById("zipcode").value);
                      var urlZip = zipcode.replace(" ","%2B");
 
-                    var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20rss%20where%20url%20%3D%20'http%3A%2F%2Fnews.google.com%2Fnews%2Fsearch%3Fgeo%3D" + urlZip + "%26output%3Drss'&format=json&diagnostics=true";
+                    var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20rss%20where%20url%20%3D%20'http%3A%2F%2Fnews.google.com%2Fnews%3Fq%3D" + urlZip + "%26output%3Drss'&format=json&diagnostics=true";
 
                     document.getElementById("headline").innerHTML      = "Fetching " ;      // Set div element where headlines will post with message to let users know something is happening.
                     document.getElementById("headlineHead").innerHTML  = "Headlines for " + fullAddress;
