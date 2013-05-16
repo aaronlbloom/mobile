@@ -215,11 +215,12 @@
                       uses embedded zip code or location as manually entered or returned from lookup
                       This google lookup can accept other inputs than zipcode so can return news from any
                       place in the world it can intrepret the name
+                      Google News stopped its feed of geo= recently, had to change it to a general news search, not geographic
                      */
 
                     zipcode = jQuery.trim(document.getElementById("zipcode").value);
                      var urlZip = zipcode.replace(" ","%2B");
-
+ 
                     var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20rss%20where%20url%20%3D%20'http%3A%2F%2Fnews.google.com%2Fnews%3Fq%3D" + urlZip + "%26output%3Drss'&format=json&diagnostics=true";
 
                     document.getElementById("headline").innerHTML      = "Fetching " ;      // Set div element where headlines will post with message to let users know something is happening.
