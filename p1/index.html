@@ -1,0 +1,590 @@
+
+
+<!--
+ HID 50821536
+ Aaron Bloom
+ Project 1 - Mobile Local
+ Computer Science E-76
+ Harvard Extension School
+ Spring 2011
+
+  Notes on html/jscript validation:
+    Validator returned 2 errors:
+	Line 517, Column 10: No p element in scope but a p end tag seen."
+		This was contradicted by JSLint. I went with including the tag
+	Line 507, Column 54: Table columns in range 2 3 established by element td have no cells beginning in them.
+		I either did not understand or agree with this and changing it messed up my formatting so i left it as is.
+
+	JSLint returned issues only regarding avoiding avoid event handlers and it did not like the supports web storage routine.
+	I ignored these on purpose, I hope this is OK.
+
+-->
+<!DOCTYPE html>
+<html lang="en-us" class="ui-mobile ui-loading landscape">
+     <head>
+          <link rel="stylesheet" href="http://code.jquery.com/mobile/1.0a2/jquery.mobile-1.0a2.min.css" />
+          <meta charset="utf-8">
+          <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.0/jquery.min.js"></script>
+          <script src="http://code.jquery.com/jquery-1.4.3.min.js"></script>
+          <script src="http://code.jquery.com/mobile/1.0a2/jquery.mobile-1.0a2.min.js"></script>
+
+
+          <script type="text/javascript">
+
+
+               /* set Global Variables used cross function: */
+                    var fullAddress = "";        // used for display name of address
+                    var fullAddressZip = "";     // zip code, or location, associated with full address display name
+                    var zipCode = "";            // location or zip code currently in use
+                    var zipList = new Array(9);  // array of zip's for history menu
+                    var guessLat = "";           // Latitude  returned by google when looking up locations  other than "detected"
+                    var guessLong = "";          // Longitude  returned by google when looking up locations  other than "detected"
+					var headlineSuccess = false; // handler for situation where printHeadlines is sometimes called twice, finds results the first time but not the second
+
+
+
+
+               /*
+                    supports_web_storage function copied from http://cdn.cs76.net/2011/spring/lectures/1/src1-dan/data/data3.html,  Dan Armendariz
+               */
+               function supports_web_storage() {
+                    try {
+                         return 'localStorage' in window && window['localStorage'] !== null;
+                    } catch (e) {
+                         return false;
+                    }
+               }
+
+
+               /*
+                    Create or Re-Create the History list dynamically each time the ziplist array changes.
+                    I originally tried creating the list box with JQuerry but found i could not dynamically  modify
+                    a JQuery element and retain it's formatting. JQuery modifies the elements  to create it's formatting results after a page loads,
+                    but does not seem to do so on elements created on the fly.
+                    I got around this in my List element as recreating the JQuery styles was more straight forward. Dynamically creating
+                    JQuery styles for the select box was too complex. I attempted to use use inline css to create a somewhat similar  look to
+                    the rest of my elements
+
+               */
+               function updateHistory(){
+                    var  selectBoxText = "";
+                    var  x = 0;
+
+                    selectBoxText  = "<select id=\"selectListMenu\" style=\"border-radius: 8px; font-family: Helvetica,Arial,sans-serif;font-size: 16px;padding: .4em; background-color: #F0F0F0;\" onChange=\"changeHistory()\">";
+                    selectBoxText += "<option value=\"TEST\">History<\/option>";
+                     for(x=0;x<=zipList.length;x++){
+                          if((zipList[x]!==null)&&(zipList[x]!=="")&&(zipList[x]!==undefined)){
+                              selectBoxText += "<option value=\"TEST\">" + zipList[x] +  "<\/option>";
+                           }
+                     }
+                     selectBoxText += "<\/select>";
+                     document.getElementById("selectList").innerHTML = selectBoxText;
+               }
+
+
+               /* initialize zip code array and store initialized  values in local storage on first use to avoid issues in get/store routines later */
+
+               function initZip(){
+                         var x = 0;
+                          for(x = 0;x<=9;x++){
+                               zipList[x]="";
+                         }
+                         if(supports_web_storage()) {
+                               var temp =   JSON.parse(localStorage.getItem("getNewsLocation")); //List stored as JSON string in Loc Storage, this parses it back to an array
+                                   if(temp === null){
+                                        //On the first use set the initialized blank values to loc storage; don't overlay if there is already value there
+                                           localStorage.setItem("getNewsLocation",JSON.stringify(zipList));
+                                      }
+                          }
+
+               }
+
+               /* store newly entered zipcode/location in zip/location array and update local storage */
+               function storeZip(){
+                         var x = 0;
+                          if(supports_web_storage()) {
+
+
+                               if((zipList!==null)||(document.getElementById("zipcode").value.length>0)){
+
+                                   //check if zip/location is already stored in array. only update list if not
+                                   if(jQuery.inArray(document.getElementById("zipcode").value,zipList)===-1){
+                                         var y = 0;
+                                        //loop through zip list backwards moving each instance up one
+                                        for(x=9;x>=1;x--){
+                                             y = x - 1;
+                                             zipList[x] = zipList[y];
+                                        }
+                                        //store most recent value at the top
+                                          zipList[0] = document.getElementById("zipcode").value;
+
+                                          localStorage.setItem("getNewsLocation",JSON.stringify(zipList));
+                                        updateHistory();
+                                     }
+
+                                    return;
+                         }
+                    }
+               }
+
+               /* Return zip/location list stored in local storage, if there is one*/
+               function getZip(){
+                     if(supports_web_storage()) {
+
+                            zipList = JSON.parse(localStorage.getItem("getNewsLocation"));
+
+
+                         try {
+
+                                   document.getElementById("zipcode").value  = zipList[0];
+                                  updateHistory();
+                              } catch (e) {
+
+                                   document.getElementById("headline").innerHTML      = "Please enter a location, or automatically detect one";
+                                   document.getElementById("weatherHead").innerHTML  = " ";
+                                   document.getElementById("weather").innerHTML      = "Please enter a location, or automatically detect one";
+                                   $(".options").trigger("expand");
+                           }
+                        return;
+                    }
+               }
+
+
+
+
+               /* Validate and store zip code, location */
+               function checkZip(){
+
+                    zipcode = jQuery.trim(document.getElementById("zipcode").value);
+
+                    if(zipcode.length>0){
+                         // If it's not invalid, and is not blank, store it in Local Storage
+                         storeZip();
+                    }
+
+
+                    if(zipcode.length===0){
+                         /* If zip is blank retrieve it from local storage, if there */
+                         getZip();
+                         zipcode = document.getElementById("zipcode").value;
+                         fullAddress=zipcode;
+                         fullAddressZip=zipcode;
+                    }
+                    /*
+                      If address is blank use zip code. The address display is only shown
+                         when zip was retrieved from geo location. If zip was manually entered
+                         there is no address, use just zip
+                    */
+                    if(fullAddress.length===0){
+                         fullAddress=zipcode;
+                         fullAddressZip=zipcode;
+                    }
+                }
+
+               /*Show the Headeline elements, hide the Weather Elements */
+               function showHeadlines(){
+                    document.getElementById('newsButton').style.display     = 'none';
+                    document.getElementById('weatherButton').style.display  = 'block';
+                    document.getElementById('weatherHead').style.display    = 'none';
+
+                    document.getElementById('weather').style.display        = 'none';
+                    document.getElementById('headlineHead').style.display   = 'block';
+                    document.getElementById('headline').style.display       = 'block';
+
+
+               }
+
+               /*Show the Weather elements, hide the Headline elements */
+               function showWeather(){
+                    document.getElementById('newsButton').style.display     = 'block';
+                    document.getElementById('weatherButton').style.display  = 'none';
+                    document.getElementById('weatherHead').style.display    = 'block';
+
+                    document.getElementById('weather').style.display        = 'block';
+                    document.getElementById('headlineHead').style.display   = 'none';
+                    document.getElementById('headline').style.display       = 'none';
+
+               }
+
+               /* Retrieves and prints headline/news information on screen  */
+               function printHeadlines() {
+
+
+                    /*
+                      YQL query of Google News RSS feed returned as Json request;
+                      uses embedded zip code or location as manually entered or returned from lookup
+                      This google lookup can accept other inputs than zipcode so can return news from any
+                      place in the world it can intrepret the name
+                     */
+
+                    zipcode = jQuery.trim(document.getElementById("zipcode").value);
+                     var urlZip = zipcode.replace(" ","%2B");
+
+                    var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20rss%20where%20url%20%3D%20'http%3A%2F%2Fnews.google.com%2Fnews%2Fsearch%3Fgeo%3D" + urlZip + "%26output%3Drss'&format=json&diagnostics=true";
+
+                    document.getElementById("headline").innerHTML      = "Fetching " ;      // Set div element where headlines will post with message to let users know something is happening.
+                    document.getElementById("headlineHead").innerHTML  = "Headlines for " + fullAddress;
+                     $.getJSON(url, function(response) {
+                         console.log(response);
+                         if (response.query.count > 0 )
+                         {
+                         headlineSuccess = true;
+                               /*
+                                  clear out previous headline's or message
+                                  dynamically create list to display headlines and tag with JQuery class tags to
+                                  force style.
+                              */
+
+                              document.getElementById("headline").innerHTML  = "<ul id=\"myHeadlineList\" class=\"myHeadlineList ui-listview\" data-role=\"listview\" data-theme=\"c\" role=\"listbox\" style=\"display: block; \"><\/ul>";
+                               /*
+                                 Populate results of query on screen in list format.
+                                */
+                              for (i=0;i<=response.query.count;i++) {
+                                   $(".myHeadlineList").append("<li role=\"option\" tabindex=\""+ i + "\" class=\"ui-li ui-li-static ui-btn-up-c\">" + "<a href=\"" + response.query.results.item[i].link + "\" data-role=\"button\">" +  response.query.results.item[i].title + "<\/a> <br><font size=1>" +  response.query.results.item[i].pubDate + "<\/font><br>" + "<\/li>");
+                              }
+                         }else{
+							 if(!headlineSuccess){
+ 								  document.getElementById("headline").innerHTML  = "Could not retrieve Headlines. Please check Zip Code and try again";
+							 }
+                         }
+                    });
+
+
+               }
+
+               //Retrieves and prints Weather information on screen
+               function printWeather() {
+               //YQL query of Weather Underground rss feed returned as Json request; uses embeded Zip code as manually entered or returned from lookup
+               var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20rss%20where%20url%20%3D%20'http%3A%2F%2Frss.wunderground.com%2Fauto%2Frss_full%2FMA%2F" + zipcode + ".xml%3Funits%3Denglish'%0A&format=json&diagnostics=true";
+               document.getElementById("weather").innerHTML  = "Fetching";
+               document.getElementById("weatherHead").innerHTML  = "Weather for " + fullAddress;
+               zipcode = jQuery.trim(document.getElementById("zipcode").value);
+                    $.getJSON(url, function(response) {
+                         console.log(response);
+                         if (response.query.count > 0 )
+                         {
+                              document.getElementById("weather").innerHTML  = "<ul id=\"myWeatherList\" class=\"myWeatherList ui-listview\" data-role=\"listview\" data-theme=\"c\" role=\"listbox\" style=\"display: block; \"><\/ul>";
+                              //Populate results of query on screen
+                              for (i=0;i<=response.query.count;i++) {
+                                   $(".myWeatherList").append("<li role=\"option\" tabindex=\""+ i + "\" class=\"ui-li ui-li-static ui-btn-up-c\">" + "<a href=\"" + response.query.results.item[i].link + "\" data-role=\"button\">" +  response.query.results.item[i].title + "<\/a> <br><font size=2>" +  response.query.results.item[i].description + "<\/font><br>" + "<\/li>");
+
+                              }
+                         }else{
+                              document.getElementById("weather").innerHTML   = "Could not retrieve Weather. Please check Zip Code and try again";
+
+                         }
+                    });
+               }
+
+
+               /* Use Google Geo API to translate position (lat/long) into Zip code, and Full Address */
+               function getAddress(pos) {
+
+                    var Latitude =  pos.coords.latitude;
+                    var Longitude = pos.coords.longitude;
+
+                    document.getElementById("zipcode").innerHTML  = "Fetching";
+                    /*
+                       YQL url which allows a query of the Google GEO API with
+                       passed lat/long to return a JSON repsonse for easy consumption by JQuery function
+                    */
+                    var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20json%20where%20url%20%3D%20%22http%3A%2F%2Fmaps.googleapis.com%2Fmaps%2Fapi%2Fgeocode%2Fjson%3Flatlng%3D"+ Latitude + "%2C" + Longitude + "%26sensor%3Dtrue%22%0A&format=json";
+                     /*
+                       Get Zip Code for use by other query's.
+                       Get description of this zip for display on screen;
+                     */
+                    $.getJSON(url, function(response) {
+                         console.log(response);
+                          for (i=0;i<=response.query.results.json.results.length;i++) {
+                              // check if results are from USA. Only get Weather for USA
+
+                               //Search for Postal Code
+                              if(response.query.results.json.results[i].types==="postal_code"){
+                                        fullAddress =  response.query.results.json.results[i].formatted_address;
+                                        document.getElementById("zipcode").value   =  response.query.results.json.results[i].address_components[0].long_name;
+                                        fullAddressZip  = response.query.results.json.results[i].address_components[0].long_name;
+                                        printHeadlines();
+                                        printWeather();
+                                        storeZip();
+                                        $(".options").trigger("collapse");
+                              }
+                          }
+
+
+
+                    });
+
+               }
+
+
+               // "error handler" routine copied from source "http://cdn.cs76.net/2011/spring/lectures/1/src1-dan/geo/geo3.html" by Dan Armendariz
+               function handler(err) {
+                    switch(err.code) {
+                         case err.PERMISSION_DENIED:
+ 								  document.getElementById("headlineHead").innerHTML  = "  ";
+								  document.getElementById("headline").innerHTML      = "Your position is unavailable. Please enter a location manually.";
+								  document.getElementById("weatherHead").innerHTML   = " ";
+								  document.getElementById("weather").innerHTML       = "Your position is unavailable. Please enter a location manually.";
+                                   break;
+                         case err.POSITION_UNAVAILABLE:
+ 								  document.getElementById("headlineHead").innerHTML  = "  ";
+								  document.getElementById("headline").innerHTML      = "Your position is unavailable. Please enter a location manually.";
+								  document.getElementById("weatherHead").innerHTML   = " ";
+								  document.getElementById("weather").innerHTML       = "Your position is unavailable. Please enter a location manually.";
+                                   break;
+                         case err.TIMEOUT:
+								  document.getElementById("headlineHead").innerHTML  = "  ";
+								  document.getElementById("headline").innerHTML      = "Timeout when determining your location. Please enter a location manually.";
+								  document.getElementById("weatherHead").innerHTML   = " ";
+								  document.getElementById("weather").innerHTML       = "Timeout when determining your location. Please enter a location manually.";
+                                   break;
+                         default:
+                              alert("Unknown error occurred! Message: " + err.message);
+                    }
+
+               }
+
+               /* Use Geolocation to identify users current position, if browser supports this*/
+               function getLocation() {
+               					document.getElementById("headline").innerHTML      = "Fetching " ;
+					document.getElementById("weather").innerHTML       = "Fetching " ;
+                     var opts = {
+                         enableHighAccuracy: true,
+                         timeout: 10000,
+                         maximumAge: 10000
+                    };
+                    if(navigator.geolocation){
+                         navigator.geolocation.getCurrentPosition(getAddress, handler, opts);
+                    }else{
+                         alert("Geolocation not supported by your browser!");
+                    }
+               }
+
+
+               //identify address based on guessed lat/longitude in guessLocation function
+               function guessAddress() {
+                    var found=false;
+                    var i = 0;
+                        /*
+                       YQL url which allows a query of the Google GEO API with
+                       passed lat/long to return a JSON repsonse for easy consumption by JQuery function
+                    */
+                     var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20json%20where%20url%20%3D%20%22http%3A%2F%2Fmaps.googleapis.com%2Fmaps%2Fapi%2Fgeocode%2Fjson%3Flatlng%3D"+ guessLat + "%2C" + guessLong + "%26sensor%3Dtrue%22%0A&format=json";
+                    /*
+                      Get Zip Code for use by other query's.
+                      Get description of this zip for display on screen;
+                    */
+                    $.getJSON(url, function(response) {
+                                console.log(response);
+                          //loop through results looking for postal code value by type name
+                          for (i=0;i<=response.query.results.json.results.length;i++) {
+                                if(response.query.results.json.results[i].types==="postal_code"){
+                                        for(x=0;x<=response.query.results.json.results[i].address_components.length;x++){
+                                             /*
+                                               loop through postal_code type results only getting zip for USA.
+                                               News lookup can be done against many entries, but Weather requires a postal code
+                                             */
+                                             if((response.query.results.json.results[i].address_components[x].types[0]==="country")&&(response.query.results.json.results[i].address_components[x].short_name ==="US")){
+                                                  found=true;
+                                                  fullAddress     =  response.query.results.json.results[i].formatted_address;
+                                                  document.getElementById("zipcode").value   =  response.query.results.json.results[i].address_components[0].long_name;
+                                                  fullAddressZip  = document.getElementById("zipcode").value;
+                                                  zipcode         = document.getElementById("zipcode").value;
+                                                  printHeadlines();
+                                                  printWeather();
+                                                  $(".options").trigger("collapse");
+                                             }
+                                        }
+                               }
+                               //if you did not find a result with us postal code, print just headlines but reset Weather
+                              if(!found){
+
+                                   zipcode     =      document.getElementById("zipcode").value;
+                                   fullAddress =      document.getElementById("zipcode").value;
+                                   printHeadlines();
+                                   document.getElementById("weatherHead").innerHTML  = " ";
+                                   document.getElementById("weather").innerHTML      = "Can not retrieve Weather for this location";
+                                   $(".options").trigger("collapse");
+                              }
+                            }
+                               //if you did not find a result with any postal code, reset
+                         if(!found){
+                              document.getElementById("headlineHead").innerHTML  = " ";
+                              document.getElementById("weatherHead").innerHTML   = " ";
+                              document.getElementById("weather").innerHTML       = "Could not retrieve Weather. Please check Zip Code and try again";
+                              $(".options").trigger("collapse");
+                         }
+                     });
+               }
+
+               /*
+                 Guess the lat/long based on a based  value of zip code, city, state, country name...Zip is most accurate but Google accepts
+                 and guesses most entered text based place names. This allows for a useful  more general lookup of places
+               */
+               function guessLocation() {
+                    var success = false;
+                    checkZip();
+                    headlineSuccess = false;
+
+                    storeZip();
+                    //trim leading spaces
+                    zipcode = jQuery.trim(document.getElementById("zipcode").value);
+                    //replace special characters with empty space
+                    var  urlZip = zipcode.replace(/[^a-zA-Z 0-9]+/g,'');
+					  /*
+						replace blank space with %2B. I did these manually instead of using the js URI encoder because that replaced
+						the spaces with %20 but YQL seemed to want %2B
+					  */
+                    urlZip = urlZip.replace(/ /g,"%2B");
+					document.getElementById("headline").innerHTML      = "Fetching " ;
+					document.getElementById("weather").innerHTML       = "Fetching " ;
+                      var url = "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20json%20where%20url%3D%22http%3A%2F%2Fmaps.googleapis.com%2Fmaps%2Fapi%2Fgeocode%2Fjson%3Faddress%3D" + urlZip + "%26sensor%3Dtrue%22&format=json&diagnostics=true";
+
+                      $.getJSON(url, function(response) {
+                         success = true;
+                         console.log(response);
+                         //Use try catch in case entered value does not yield a geometry.location result
+                         try {
+                              guessLat =  response.query.results.json.results.geometry.location.lat;
+                              guessLong =  response.query.results.json.results.geometry.location.lng;
+
+                         } catch (e) {
+                              //assumption is they have not entered a value
+                              if(zipcode.length===0){
+                                   document.getElementById("headlineHead").innerHTML  = "  ";
+                                   document.getElementById("headline").innerHTML      = "Please enter a location, or automatically detect one";
+                                   document.getElementById("weatherHead").innerHTML   = " ";
+                                   document.getElementById("weather").innerHTML       = "Please enter a location, or automatically detect one";
+                                    $(".options").trigger("expand");
+                              }else{
+                              //assumption is they entered an invalid value
+                                   document.getElementById("headlineHead").innerHTML  = "  ";
+                                   document.getElementById("headline").innerHTML      = "Could not retrieve Headlines for " + zipcode + ". Please check Zip Code and try again";
+                                   document.getElementById("weatherHead").innerHTML   = " ";
+                                   document.getElementById("weather").innerHTML       = "Could not retrieve Weather for " + zipcode + ". Please check Zip Code and try again";
+                              }
+                            return false;
+                         }
+                          guessAddress();
+                         });
+                }
+
+               /*
+                  When user selects an option from the history menu it will move that value to the Location input and trigger a lookup
+               */
+               function changeHistory(){
+                    var selected = $("#selectListMenu :selected").text();
+                    if((selected!=="History")&&(selected!=="")){
+                         document.getElementById("zipcode").value = selected;
+                         guessLocation();
+                    }
+               }
+
+               /* JQuery function to handle Get Location onclick event */
+               $(function(){
+                    $('#detectLocation').click(function(e){
+                         getLocation();
+                         e.stopPropagation();
+                    });
+               });
+
+               /*JQuery function to handle the Refresh data onclick event */
+               $(function(){
+                    $('#fetchData').click(function(e){
+                          guessLocation();
+
+                         e.stopPropagation();
+                    });
+               });
+
+               $(window).keyup(function(e) {
+                    //alert(e.keyCode);
+                    if(e.keyCode === 13) {
+                         guessLocation();
+
+                         e.stopPropagation();
+                    }
+               });
+
+               /*
+                 On Load of DOM (vs onLoad() function which is just on load of document)
+                 Default actions to take on initial page load, or refresh.
+                 Default's to show Headlines, then fetches data for stored zip code or national if no
+                  zip code was entered
+               */
+               $(document).ready(function() {
+                     initZip();
+
+                    getZip();
+
+                    showHeadlines();
+
+                    guessLocation();
+                    //if nothing has changed after these functions run, display message that process did not work
+                    if( document.getElementById("headline").innerHTML  === "to be determined "){
+                    	 document.getElementById("headline").innerHTML      = "Could not retrieve Headlines, this site may not be supported for your browser";
+                    	 document.getElementById("headlineHead").innerHTML  = " ";
+						 document.getElementById("weatherHead").innerHTML   = " ";
+						 document.getElementById("weather").innerHTML       = "Could not retrieve Headlines, this site may not be supported for your browser";;
+                    }
+
+
+                });
+
+          </script>
+
+        <title>CS76 P1: Mobile Local</title>
+        <meta name="viewport" content="width=device-width" />
+    </head>
+     <body>
+
+          <div data-role="page">
+               <!--Header Line along top of page with Weather/News buttons for navigation:-->
+               <div data-role="header" data-theme="b" data-position="inline">
+                    <a id="newsButton"    onclick="showHeadlines(); return false;" >News   </a>
+                    <h1>CS76 P1 Local News</h1>
+                    <a id="weatherButton" onclick="showWeather();   return false;" >Weather</a>
+               </div>
+
+               <div data-role="content">
+                    <!--Collapsible Options menu along the top-->
+                    <div class="options" data-role="collapsible" data-collapsed="true">
+                         <h3>Options</h3>
+                         <p>
+                         <i>Enter either a Zip Code, City, State or Country or click Detect Location to attempt to automatically identify your location </i>
+                               <table  style="width:100%;" >
+
+                                   <tr>
+                                   <!-- received error in validator but i could not really understand the complain. Attempts at altering left me with
+                                        a page format i did not like. I hope this is OK
+                                              Line 497, Column 26: Table columns in range 2 3 established by element td have no cells beginning in them.
+                                    -->
+                                        <td colspan=3><b>Location:</b> <br><input    id="zipcode" name="zipcode" type="text" ></td><td> &nbsp;<br><div id="selectList"></div></td>
+                                  </tr>
+                                  <tr>
+                                       <td colspan=4><button data-role="button" type="button" data-theme="b" id="detectLocation" value="Detect My Location" >Detect Location</button></td>
+                                  </tr>
+                                  <tr>
+                                        <td colspan=4><button data-role="button" type="button" data-theme="b" id="fetchData"      value="Get Headlines"> Refresh</button></td>
+                                   </tr>
+
+                                </table>
+						</p> <!--JSLint said I should have the end p here, validator said i should not. I included it-->
+                    </div>
+
+                    <!-- Content, each div section to be re-populated by Javascript
+                         Either Headline or Weather section is shown at a given time, the
+                         other section will be hidden-->
+                     <h3 id="headlineHead">Headlines for:   </h3>
+                     <h4 id="headline"    >to be determined </h4>
+
+
+                     <h3 id="weatherHead" >Weather for:     </h3>
+                     <h4 id="weather"     >to be determined </h4>
+
+               </div>
+
+
+          </div>
+    </body>
+</html>
